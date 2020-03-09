@@ -49,7 +49,7 @@ fn snap(b_window: &sdl2::video::Window, s_window: &mut sdl2::video::Window) {
     );
 }
 ```
-This is still missing a size check, but when I go in to refactor everything, I'll make sure to add that check, but for PoC purposes, this is satisfactory. I did some minor cleanup and went to bed.
+This is still missing a size check. I'll make sure to add that check in refactoring, but for PoC purposes, this is satisfactory. I did some minor cleanup and went to bed.
 
 ## Closing
 ### Lesson
