@@ -1,30 +1,125 @@
-//! The simplest Amethyst example.
-use alacritty::init;
-use amethyst::prelude::*;
+extern crate sdl2;
+extern crate sdl2_window;
+extern crate window;
 
-struct Example;
+#[macro_use]
+extern crate log;
+use crate::window::AdvancedWindow;
+use sdl2::event::Event;
+use sdl2::event::WindowEvent;
 
-impl EmptyState for Example {
-    fn on_start(&mut self, _: StateData<'_, ()>) {
-        println!("Begin!");
-    }
+use sdl2_window::Sdl2Window;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
+use window::WindowSettings;
 
-    fn on_stop(&mut self, _: StateData<'_, ()>) {
-        println!("End!");
-    }
-
-    fn update(&mut self, _: StateData<'_, ()>) -> EmptyTrans {
-        println!("Hello from Amethyst!");
-        Trans::Quit
-    }
+fn bounded(b_pos: (i32, i32), b_size: (u32, u32), s_pos: (i32, i32), s_size: (u32, u32)) -> bool {
+    !(b_size.0 <= s_size.0 || b_size.1 <= s_size.1)
+        && !(s_pos.0 < b_pos.0 || s_pos.1 < b_pos.1)
+        && !(b_pos.0 + (b_size.0 as i32) < s_pos.0 + (s_size.0 as i32)
+            || b_pos.1 + (b_size.1 as i32) < s_pos.1 + (s_size.1 as i32))
 }
 
-fn main() -> amethyst::Result<()> {
-    init();
-    amethyst::start_logger(Default::default());
-    let assets_dir = "./";
-    let mut game = Application::new(assets_dir, Example, ())?;
-    game.run();
+fn snap(b_window: &sdl2::video::Window, s_window: &mut sdl2::video::Window) {
+    let b_pos = b_window.position();
+    let s_pos = s_window.position();
+    let b_size = b_window.size();
+    let s_size = s_window.size();
+    let mut snap_pos = s_pos;
+    if s_pos.0 < b_pos.0 {
+        snap_pos.0 = b_pos.0;
+    }
+    if s_pos.1 < b_pos.1 {
+        snap_pos.1 = b_pos.1;
+    }
+    if b_pos.0 + (b_size.0 as i32) < s_pos.0 + (s_size.0 as i32) {
+        snap_pos.0 = b_pos.0 + (b_size.0 as i32) - (s_size.0 as i32);
+    }
+    if b_pos.1 + (b_size.1 as i32) < s_pos.1 + (s_size.1 as i32) {
+        snap_pos.1 = b_pos.1 + (b_size.1 as i32) - (s_size.1 as i32);
+    }
+    s_window.set_position(
+        sdl2::video::WindowPos::Positioned(snap_pos.0),
+        sdl2::video::WindowPos::Positioned(snap_pos.1),
+    );
+}
 
-    Ok(())
+fn main() {
+    let sdl = sdl2::init().unwrap();
+    let video_subsystem = sdl.video().unwrap();
+    let display_mode = video_subsystem.current_display_mode(0).unwrap();
+    let (d_width, d_height) = (display_mode.w as u32, display_mode.h as u32);
+
+    neovide::init_neovide(((d_width / 20) as u64, (d_height / 50) as u64));
+
+    let mut parent = Sdl2Window::with_subsystem(
+        video_subsystem,
+        &WindowSettings::new("SDL Window", (d_width, d_height))
+            .fullscreen(false)
+            .vsync(true), // etc
+    )
+    .unwrap();
+
+    parent.set_automatic_close(false);
+
+    let mut window = neovide::window::WindowWrapper::new(Some(sdl));
+
+    info!("Starting window event loop");
+    let mut event_pump = window
+        .context
+        .event_pump()
+        .expect("Could not create sdl event pump");
+    'running: loop {
+        let frame_start = Instant::now();
+
+        window.synchronize_settings();
+
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. } => break 'running,
+                Event::Window {
+                    window_id,
+                    win_event,
+                    ..
+                } => {
+                    match win_event {
+                        WindowEvent::FocusGained => {
+                            if window_id == parent.window.id() {
+                                window.window.raise()
+                            }
+                        }
+                        WindowEvent::Moved { .. } => snap(&parent.window, &mut window.window),
+                        _ => {}
+                    }
+
+                    neovide::redraw_scheduler::REDRAW_SCHEDULER.queue_next_frame()
+                }
+                Event::KeyDown {
+                    keycode: Some(keycode),
+                    keymod: modifiers,
+                    ..
+                } => window.handle_key_down(keycode, modifiers),
+                Event::TextInput { text, .. } => window.handle_text_input(text),
+                Event::MouseMotion { x, y, .. } => window.handle_pointer_motion(x, y),
+                Event::MouseButtonDown { .. } => window.handle_pointer_down(),
+                Event::MouseButtonUp { .. } => window.handle_pointer_up(),
+                Event::MouseWheel { x, y, .. } => window.handle_mouse_wheel(x, y),
+
+                _ => {}
+            }
+        }
+
+        if !window.draw_frame() {
+            break;
+        }
+
+        let elapsed = frame_start.elapsed();
+        let refresh_rate = neovide::settings::SETTINGS
+            .get::<neovide::window::WindowSettings>()
+            .refresh_rate as f32;
+        let frame_length = Duration::from_secs_f32(1.0 / refresh_rate);
+        if elapsed < frame_length {
+            sleep(frame_length - elapsed);
+        }
+    }
 }
