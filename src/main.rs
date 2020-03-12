@@ -8,17 +8,12 @@ use crate::window::AdvancedWindow;
 use sdl2::event::Event;
 use sdl2::event::WindowEvent;
 
+use sdl2::video::Window;
 use sdl2_window::Sdl2Window;
+use std::collections::HashSet;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 use window::WindowSettings;
-
-fn bounded(b_pos: (i32, i32), b_size: (u32, u32), s_pos: (i32, i32), s_size: (u32, u32)) -> bool {
-    !(b_size.0 <= s_size.0 || b_size.1 <= s_size.1)
-        && !(s_pos.0 < b_pos.0 || s_pos.1 < b_pos.1)
-        && !(b_pos.0 + (b_size.0 as i32) < s_pos.0 + (s_size.0 as i32)
-            || b_pos.1 + (b_size.1 as i32) < s_pos.1 + (s_size.1 as i32))
-}
 
 fn snap(b_window: &sdl2::video::Window, s_window: &mut sdl2::video::Window) {
     let b_pos = b_window.position();
@@ -44,13 +39,24 @@ fn snap(b_window: &sdl2::video::Window, s_window: &mut sdl2::video::Window) {
     );
 }
 
+fn frame_rate_sleep(frame_start: Instant, refresh_rate: f32) {
+    let elapsed = frame_start.elapsed();
+
+    let frame_length = Duration::from_secs_f32(1.0 / refresh_rate);
+    if elapsed < frame_length {
+        sleep(frame_length - elapsed);
+    }
+}
+
 fn main() {
     let sdl = sdl2::init().unwrap();
     let video_subsystem = sdl.video().unwrap();
     let display_mode = video_subsystem.current_display_mode(0).unwrap();
     let (d_width, d_height) = (display_mode.w as u32, display_mode.h as u32);
 
-    neovide::init_neovide(((d_width / 20) as u64, (d_height / 50) as u64));
+    let neo_dimensions = ((d_width / 20) as u64, (d_height / 50) as u64);
+
+    neovide::init_neovide(neo_dimensions);
 
     let mut parent = Sdl2Window::with_subsystem(
         video_subsystem,
@@ -62,13 +68,15 @@ fn main() {
 
     parent.set_automatic_close(false);
 
+    let mut event_pump = sdl.event_pump().expect("Could not create sdl event pump");
     let mut window = neovide::window::WindowWrapper::new(Some(sdl));
 
     info!("Starting window event loop");
-    let mut event_pump = window
-        .context
-        .event_pump()
-        .expect("Could not create sdl event pump");
+
+    let refresh_rate = neovide::settings::SETTINGS
+        .get::<neovide::window::WindowSettings>()
+        .refresh_rate as f32;
+
     'running: loop {
         let frame_start = Instant::now();
 
@@ -76,7 +84,11 @@ fn main() {
 
         for event in event_pump.poll_iter() {
             match event {
-                Event::Quit { .. } => break 'running,
+                Event::Quit { .. } => {
+                    println!("Window break");
+
+                    break 'running;
+                }
                 Event::Window {
                     window_id,
                     win_event,
@@ -85,10 +97,21 @@ fn main() {
                     match win_event {
                         WindowEvent::FocusGained => {
                             if window_id == parent.window.id() {
-                                window.window.raise()
+                                if let Some(mut neo_win) = window.window.take() {
+                                    neo_win.raise();
+                                    window.window = Some(neo_win);
+                                }
                             }
                         }
-                        WindowEvent::Moved { .. } => snap(&parent.window, &mut window.window),
+                        WindowEvent::Moved { .. } => {
+                            let mut neo_win = window.window.take().unwrap();
+                            snap(&parent.window, &mut neo_win);
+                            window.window = Some(neo_win);
+                        }
+                        WindowEvent::Close => {
+                            window.window.take();
+                            println!("Window Close");
+                        }
                         _ => {}
                     }
 
@@ -109,17 +132,10 @@ fn main() {
             }
         }
 
-        if !window.draw_frame() {
-            break;
+        if window.window.is_some() {
+            window.draw_frame();
         }
-
-        let elapsed = frame_start.elapsed();
-        let refresh_rate = neovide::settings::SETTINGS
-            .get::<neovide::window::WindowSettings>()
-            .refresh_rate as f32;
-        let frame_length = Duration::from_secs_f32(1.0 / refresh_rate);
-        if elapsed < frame_length {
-            sleep(frame_length - elapsed);
-        }
+        frame_rate_sleep(frame_start, refresh_rate);
     }
+    std::process::exit(0);
 }
