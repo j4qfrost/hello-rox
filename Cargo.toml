@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["AnhQuan Nguyen <j4qfrost@gmail.com>"]
 edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+build = "build.rs"
 
 [dependencies]
 log = "0.4.8"
@@ -12,27 +13,10 @@ log = "0.4.8"
 # path = "../rust-sdl2"
 git = "https://github.com/Rust-SDL2/rust-sdl2.git"
 default-features = false
-# features = ["image", "bundled"]
-
-# [dependencies.sdl2-sys]
-# # path = "../rust-sdl2/sdl2-sys"
-# git = "https://github.com/Rust-SDL2/rust-sdl2.git"
-# default-features = false
-# features = ["image", "static-link"]
+features = ["image", "use_mac_framework"]
 
 [dependencies.neovide]
 # path = "../neovide"
 git = "https://github.com/j4qfrost/neovide.git"
 default-features = false
 features = ["embed-fonts"]
-
-# [patch.crates-io.sdl2-sys]
-# # path = "../rust-sdl2/sdl2-sys"
-# git = "https://github.com/Rust-SDL2/rust-sdl2.git"
-# default-features = false
-# features = ["image", "static-link"]
-# [patch.crates-io.sdl2]
-# # path = "../rust-sdl2"
-# git = "https://github.com/Rust-SDL2/rust-sdl2.git"
-# default-features = false
-# features = ["image", "bundled"]
